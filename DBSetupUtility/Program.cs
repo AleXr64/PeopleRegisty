@@ -14,16 +14,15 @@ namespace DBSetupUtility
             var selectDbCommand = conn.CreateCommand();
             var createTableCommand = conn.CreateCommand();
 
-            createDbCommand.CommandText = "CREATE DATABASE 'alxr64_PeopleRegistry_Demo';";
+            createDbCommand.CommandText = "CREATE DATABASE IF NOT EXISTS 'alxr64_PeopleRegistry_Demo';"
+;
             selectDbCommand.CommandText = "DATABASE 'alxr64_PeopleRegistry_Demo';";
-            createTableCommand.CommandText = @"CREATE TABLE person (
+            createTableCommand.CommandText = @"CREATE TABLE IF NOT EXISTS person (
     id SERIAL not null,
     FirstName VARCHAR(100),
     LastName VARCHAR(100),
     SurName VARCHAR(100),
-    BirthDate DATETIME YEAR TO FRACTION NOT NULL DEFAULT
-              DATETIME(0001-01-01 17:00:00.000) YEAR TO FRACTION
-);";
+    BirthDate DATE);";
 
             createDbCommand.ExecuteNonQuery();
             selectDbCommand.ExecuteNonQuery();

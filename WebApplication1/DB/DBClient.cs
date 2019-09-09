@@ -7,7 +7,9 @@ namespace WebApplication1.DB
 {
     public class DBClient
     {
-        private const string _connString = "Host=127.0.0.1;Server = alx_test; User ID = informix; password = 462753;Database=alxr64_PeopleRegistry_Demo";
+        private const string _connString =
+            "Host=127.0.0.1;Server = alx_test; User ID = informix; password = 462753;Database=alxr64_PeopleRegistry_Demo";
+
         private readonly IfxConnection _conn;
 
         public DBClient() { _conn = new IfxConnection(_connString); }
@@ -42,12 +44,12 @@ namespace WebApplication1.DB
         public async Task<Person> GetById(int id)
         {
             var req = _conn.CreateCommand();
-            req.CommandText = @"SELECT * FROM person WHERE id={id};";
+            req.CommandText = $"SELECT * FROM person WHERE id={id};";
             await _conn.OpenAsync();
             var res = await req.ExecuteReaderAsync();
             var p = FromDb(res);
             _conn.Close();
-            
+
             return p;
         }
 
@@ -63,9 +65,17 @@ namespace WebApplication1.DB
             req.Parameters["LastName"].Value = p.LastName;
             req.Parameters["SurName"].Value = p.SurName;
             req.Parameters["BirthDate"].Value = p.BirthDate;
-           /// req.Prepare();
+            
             await _conn.OpenAsync();
-            var id = await req.ExecuteNonQueryAsync();
+
+            await req.ExecuteNonQueryAsync();
+
+            req = _conn.CreateCommand();
+            req.CommandText = @"SELECT DBINFO( 'sqlca.sqlerrd1' )
+FROM systables
+WHERE tabid = 1;";
+            var id = (int) req.ExecuteScalar();
+
             _conn.Close();
             return id;
         }

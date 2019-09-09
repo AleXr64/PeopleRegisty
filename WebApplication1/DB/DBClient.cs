@@ -20,6 +20,7 @@ namespace WebApplication1.DB
 
             if(reader.HasRows)
                 {
+                    reader.Read();
                     var firstName = reader["FirstName"];
                     var lastName = reader["LastName"];
                     var surName = reader["SurName"];

@@ -13,36 +13,17 @@ namespace WebApplication1.Controllers
     {
         private DBClient _db = new DBClient();
         // GET api/values
-        public async Task<IEnumerable<string>> Get()
-        {
-            var p = new Person();
-            p.LastName = "Last";
-            p.FirstName = "First";
-            p.BirthDate = DateTime.Today;
-            p.SurName = "Sur";
-           await _db.Add(p);
-            return new string[] { "value1", "value2" };
-        }
+        public async Task<IEnumerable<Person>> Get() { return _db.Persons.Take(5); }
 
         // GET api/values/5
-        public string Get(int id)
-        {
-            return "value";
-        }
+        public async Task<Person> Get(int id) { return _db.GetById(id); }
 
         // POST api/values
-        public void Post([FromBody]string value)
+        public void Post([FromBody]Person value)
         {
+            _db.Add(value);
         }
 
-        // PUT api/values/5
-        public void Put(int id, [FromBody]string value)
-        {
-        }
-
-        // DELETE api/values/5
-        public void Delete(int id)
-        {
-        }
+   
     }
 }

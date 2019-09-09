@@ -1,5 +1,8 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Data.Common;
+using System.Data.Linq;
+using System.Linq;
 using System.Threading.Tasks;
 using IBM.Data.Informix;
 
@@ -12,73 +15,28 @@ namespace WebApplication1.DB
 
         private readonly IfxConnection _conn;
 
-        public DBClient() { _conn = new IfxConnection(_connString); }
+        private DataContext _linq;
 
-        private Person FromDb(DbDataReader reader)
+        public Table<Person> Persons => _linq.GetTable<Person>();
+
+        public DBClient()
         {
-            Person p;
-
-            if(reader.HasRows)
-                {
-                    reader.Read();
-                    var firstName = reader["FirstName"];
-                    var lastName = reader["LastName"];
-                    var surName = reader["SurName"];
-                    var birthDate = reader["BirthDate"];
-                    var id = reader["id"];
-                    p = new Person();
-
-                    if(firstName != null) p.FirstName = (string) firstName;
-                    if(lastName != null) p.LastName = (string) lastName;
-                    if(surName != null) p.SurName = (string) surName;
-                    if(birthDate != null) p.BirthDate = (DateTime) birthDate;
-                    if(id != null) p.Id = (int) id;
-                }
-            else
-                {
-                    p = new Person();
-                }
-
-            return p;
+            _conn = new IfxConnection(_connString);
+            _linq = new DataContext(_conn);
         }
 
-        public async Task<Person> GetById(int id)
-        {
-            var req = _conn.CreateCommand();
-            req.CommandText = $"SELECT * FROM person WHERE id={id};";
-            await _conn.OpenAsync();
-            var res = await req.ExecuteReaderAsync();
-            var p = FromDb(res);
-            _conn.Close();
 
-            return p;
+        public Person GetById(int id)
+        {
+            return Persons.FirstOrDefault(x => x.Id == id);
+
         }
 
-        public async Task<int> Add(Person p)
+
+        public void Add(Person p)
         {
-            var req = _conn.CreateCommand();
-            req.CommandText = "INSERT INTO person (FirstName, LastName, SurName, BirthDate) VALUES ( ?, ?, ?, ?)";
-            req.Parameters.Add("FirstName", IfxType.VarChar, 100);
-            req.Parameters.Add("LastName", IfxType.VarChar, 100);
-            req.Parameters.Add("SurName", IfxType.VarChar, 100);
-            req.Parameters.Add("BirthDate", IfxType.DateTime);
-            req.Parameters["FirstName"].Value = p.FirstName;
-            req.Parameters["LastName"].Value = p.LastName;
-            req.Parameters["SurName"].Value = p.SurName;
-            req.Parameters["BirthDate"].Value = p.BirthDate;
-            
-            await _conn.OpenAsync();
-
-            await req.ExecuteNonQueryAsync();
-
-            req = _conn.CreateCommand();
-            req.CommandText = @"SELECT DBINFO( 'sqlca.sqlerrd1' )
-FROM systables
-WHERE tabid = 1;";
-            var id = (int) req.ExecuteScalar();
-
-            _conn.Close();
-            return id;
+         Persons.InsertOnSubmit(p);
+         _linq.SubmitChanges();
         }
     }
 }

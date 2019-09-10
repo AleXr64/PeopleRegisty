@@ -1,7 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Data.Linq;
+using System.Data.Common;
 using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
 using IBM.Data.Informix;
 using WebApplication1.Models;
 
@@ -14,71 +16,175 @@ namespace WebApplication1.DB
 
         private readonly IfxConnection _conn;
 
-        private readonly DataContext _linq;
+        public DBClient() { _conn = new IfxConnection(_connString); }
 
-        public DBClient()
+        private List<Person> FromDb(DbDataReader reader)
         {
-            _conn = new IfxConnection(_connString);
-            _linq = new DataContext(_conn);
+            var result = new List<Person>();
+
+            if(reader.HasRows)
+                while(reader.Read())
+                    {
+                        var firstName = reader["FirstName"];
+                        var lastName = reader["LastName"];
+                        var surName = reader["SurName"];
+                        var birthDate = reader["BirthDate"];
+                        var id = reader["id"];
+                        var p = new Person();
+
+                        if(firstName != null) p.FirstName = (string) firstName;
+                        if(lastName != null) p.LastName = (string) lastName;
+                        if(surName != null) p.SurName = (string) surName;
+                        if(birthDate != null) p.BirthDate = (DateTime) birthDate;
+                        if(id != null) p.Id = (int) id;
+                        result.Add(p);
+                    }
+
+            return result;
         }
 
-        public Table<Person> Persons => _linq.GetTable<Person>();
-
-        public Person GetById(int id) { return Persons.FirstOrDefault(x => x.Id == id); }
-
-        public List<Person> Search(SearchModel criteria)
+        public async Task<Person> GetById(int id)
         {
-            return Persons.ByLastName(criteria.LastName)
-                          .ByFirstName(criteria.FirstName)
-                          .BySurName(criteria.SurName)
-                          .ByBirthDate(criteria.BirthAfter, criteria.BirthBefore)
-                          .ToList();
+            var req = _conn.CreateCommand();
+            req.CommandText = $"SELECT * FROM person WHERE id={id};";
+            await _conn.OpenAsync();
+            var res = await req.ExecuteReaderAsync();
+            var p = FromDb(res);
+            _conn.Close();
+
+            return p.First();
         }
 
-        public void Add(Person p)
+        public async Task<int> Add(Person p)
         {
-            Persons.InsertOnSubmit(p);
-            _linq.SubmitChanges();
+            var req = _conn.CreateCommand();
+            req.CommandText = "INSERT INTO person (FirstName, LastName, SurName, BirthDate) VALUES ( ?, ?, ?, ?)";
+            req.Parameters.Add("FirstName", IfxType.VarChar, 100);
+            req.Parameters.Add("LastName", IfxType.VarChar, 100);
+            req.Parameters.Add("SurName", IfxType.VarChar, 100);
+            req.Parameters.Add("BirthDate", IfxType.DateTime);
+            req.Parameters["FirstName"].Value = p.FirstName;
+            req.Parameters["LastName"].Value = p.LastName;
+            req.Parameters["SurName"].Value = p.SurName;
+            req.Parameters["BirthDate"].Value = p.BirthDate;
+
+            await _conn.OpenAsync();
+
+            await req.ExecuteNonQueryAsync();
+
+            req = _conn.CreateCommand();
+            req.CommandText = @"SELECT DBINFO( 'sqlca.sqlerrd1' ) FROM systables WHERE tabid = 1;";
+            var id = (int) req.ExecuteScalar();
+
+            _conn.Close();
+            return id;
         }
 
-        public void Update(Person p)
+        public async Task Update(Person p)
         {
-            if(!Persons.Any(x=>x.Id == p.Id) || p.Id == 0)
+            if(p.Id == 0)
                 {
-                    Add(p);
+                    await Add(p);
                     return;
                 }
-            var up = Persons.FirstOrDefault(x => x.Id == p.Id);
-            up.LastName = p.LastName;
-            up.FirstName = p.FirstName;
-            up.BirthDate = p.BirthDate;
-            _linq.SubmitChanges();
-        }
-    }
 
-    internal static class PersonHelper
-    {
-        public static IQueryable<Person> ByFirstName(this IQueryable<Person> q, string name)
-        {
-            if(string.IsNullOrEmpty(name)) return q;
-            return q.Where(x => x.FirstName.StartsWith(name) || x.FirstName == name);
-        }
+            var req = _conn.CreateCommand();
+            req.CommandText = $"select count(*) from person where id={p.Id};";
+            await _conn.OpenAsync();
 
-        public static IQueryable<Person> ByLastName(this IQueryable<Person> q, string name)
-        {
-            if(string.IsNullOrEmpty(name)) return q;
-            return q.Where(x => x.LastName.StartsWith(name) || x.LastName == name);
-        }
-
-        public static IQueryable<Person> BySurName(this IQueryable<Person> q, string name)
-        {
-            if(string.IsNullOrEmpty(name)) return q;
-            return q.Where(x => x.SurName.StartsWith(name) || x.SurName == name);
+            var count = (int) await req.ExecuteScalarAsync();
+            _conn.Close();
+            if(count == 1)
+                {
+                    await _conn.OpenAsync();
+                    req.CommandText =
+                        $"UPDATE people SET FirstName={p.FirstName}, LastName={p.LastName}, SurName={p.SurName}," +
+                        $" BirthDate={p.BirthDate.ToSQL()} WHERE id={p.Id};";
+                    await req.ExecuteNonQueryAsync();
+                    _conn.Close();
+                }
+            else
+                {
+                    await Add(p);
+                }
         }
 
-        public static IQueryable<Person> ByBirthDate(this IQueryable<Person> q, DateTime min, DateTime max)
+        public async Task<List<Person>> Search(SearchModel criteria)
         {
-            return q.Where(x => min < x.BirthDate && x.BirthDate < max);
+            var req = _conn.CreateCommand();
+            var sb = new StringBuilder();
+            var needAnd = false;
+
+            sb.Append(!criteria.Valid() ? "SELECT * FROM person;" : "SELECT * FROM person WHERE ");
+
+            if(criteria.FirstName.IsNotEmpty())
+                {
+                    sb.Append($"FirstName = {criteria.FirstName} ");
+                    needAnd = true;
+                }
+
+            if(criteria.LastName.IsNotEmpty())
+                {
+                    if(needAnd)
+                        {
+                            sb.Append($"AND LastName = {criteria.LastName}");
+                        }
+                    else
+                        {
+                            sb.Append($"LastName = {criteria.LastName}");
+                            needAnd = true;
+                        }
+                }
+
+            if(criteria.SurName.IsNotEmpty())
+                {
+                    if(needAnd)
+                        {
+                            sb.Append($"AND SurName = {criteria.SurName}");
+                        }
+                    else
+                        {
+                            sb.Append($"SurName = {criteria.SurName}");
+                            needAnd = true;
+                        }
+                }
+
+            if(criteria.BirthAfter != DateTime.MaxValue)
+                {
+                    if(needAnd)
+                        {
+                            sb.Append($"AND BirthDate > {criteria.BirthAfter.ToSQL()}");
+                        }
+                    else
+                        {
+                            sb.Append($"BirthDate > {criteria.BirthAfter.ToSQL()}");
+                            needAnd = true;
+                        }
+                }
+
+            if(criteria.BirthBefore != DateTime.MinValue)
+                {
+                    if(needAnd)
+                        {
+                            sb.Append($"AND BirthDate < {criteria.BirthBefore.ToSQL()}");
+                        }
+                    else
+                        {
+                            sb.Append($"BirthDate > {criteria.BirthBefore.ToSQL()}");
+                            needAnd = true;
+                        }
+                }
+
+            req.CommandText = sb.ToString();
+
+            await _conn.OpenAsync();
+            var res = await req.ExecuteReaderAsync();
+
+            var result = FromDb(res);
+
+            _conn.Close();
+
+            return result;
         }
     }
 }

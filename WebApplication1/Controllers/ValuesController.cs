@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Web.Http;
@@ -12,18 +13,22 @@ namespace WebApplication1.Controllers
         private readonly DBClient _db = new DBClient();
 
         // GET api/values
-        public IEnumerable<Person> Get() { return _db.Persons.Take(5); }
-
-        public IEnumerable<Person> GetAll() { return _db.Persons.ToList();}
-        // GET api/values/5
-        public Person Get(int id)
+        public async Task<IEnumerable<Person>> Get()
         {
-            return _db.GetById(id);
+            return await _db.Search(new SearchModel("", "", "", DateTime.MinValue, DateTime.MaxValue));
+        }
+
+
+        // GET api/values/5
+        public async Task<Person> Get(int id)
+        {
+            return await _db.GetById(id);
         }
 
         // POST api/values
         public void Post([FromBody] Person value) { _db.Update(value); }
 
-        public List<Person> Search(SearchModel criteria) { return _db.Search(criteria); }
+        [Route("api/values/search")]
+        public async Task<List<Person>> Search(SearchModel criteria) { return await _db.Search(criteria); }
     }
 }

@@ -17,5 +17,10 @@ namespace WebApplication1.Models
         public string SurName { get; }
         public DateTime BirthBefore { get; }
         public DateTime BirthAfter { get; }
+        public bool Valid()
+        {
+            var dateValid = (BirthBefore != DateTime.MinValue) && (BirthAfter != DateTime.MaxValue);
+            return FirstName.IsNormalized() && LastName.IsNotEmpty() && SurName.IsNotEmpty() && dateValid;
+        }
     }
 }
